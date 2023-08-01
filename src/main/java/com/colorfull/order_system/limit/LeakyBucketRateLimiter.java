@@ -13,30 +13,55 @@ import java.util.concurrent.TimeUnit;
  */
 public class LeakyBucketRateLimiter {
 
-    // 桶的容量
+    /**
+     * 漏桶的最大容量
+     */
     private final int capacity;
-    // 漏出速率
-    private final int permitsPerSecond;
-    // 剩余水量
-    private long leftWater;
-    // 上次注入时间
-    private long timeStamp = System.currentTimeMillis();
 
+    /**
+     * 漏桶每秒流出速率
+     */
+    private final int permitsPerSecond;
+
+    /**
+     * 漏出时间间隔，单位毫秒
+     */
+    private final long stableInterval;
+
+    /**
+     * 漏桶当前的水量
+     */
+    private long leftWater;
+
+    /**
+     * 上次刷新时间戳
+     */
+    private long lastTimeStamp;
+
+    /**
+     * 有参构造函数
+     */
     public LeakyBucketRateLimiter(int permitsPerSecond, int capacity) {
+
         this.capacity = capacity;
         this.permitsPerSecond = permitsPerSecond;
+        this.lastTimeStamp = System.currentTimeMillis();
+        // 这里的间隔时间大概率不是整数，是向下取整的
+        this.stableInterval = 1000 / permitsPerSecond;
     }
 
     /**
-     * 这里实际上只是对流量是否抛弃做了检验，并没有以很定速率漏出流量
+     * 方法目的：检查是否有落入漏桶的条件
      */
     public synchronized boolean tryAcquire() {
-        //1. 计算剩余水量
-        long now = System.currentTimeMillis();
-        long timeGap = (now - timeStamp) / 1000;
-        leftWater = Math.max(0, leftWater - timeGap * permitsPerSecond);
-        timeStamp = now;
 
+        long nowTimeStamp = System.currentTimeMillis();
+        long difference = nowTimeStamp - lastTimeStamp;
+        // 这里必须是大于，不能包含等于，因为stableInterval本身是向下取整的
+        if (difference > stableInterval) {
+            this.lastTimeStamp = nowTimeStamp;
+            leftWater = Math.max(0, leftWater - (difference * permitsPerSecond) / 1000);
+        }
         // 如果未满，则放行；否则限流
         if (leftWater < capacity) {
             leftWater += 1;
@@ -47,11 +72,11 @@ public class LeakyBucketRateLimiter {
 
     public static void main(String[] args) throws InterruptedException {
 
-        // 想要以很定速率漏出流量，通常还需要配合一个FIFO队列来实现，当流量没有被抛弃时请求入队，然后再以恒定速率出队进行处理
-        ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        // 想要以恒定速率漏出流量，通常还需要配合一个FIFO队列来实现，当流量没有被抛弃时请求入队，然后再以恒定速率出队进行处理
+        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(10);
         ExecutorService singleThread = Executors.newSingleThreadExecutor();
 
-        LeakyBucketRateLimiter rateLimiter = new LeakyBucketRateLimiter(20, 20);
+        LeakyBucketRateLimiter rateLimiter = new LeakyBucketRateLimiter(30, 20);
         // 存储流量的队列
         Queue<Integer> queue = new LinkedList<>();
         // 模拟请求  不确定速率注水
@@ -74,12 +99,12 @@ public class LeakyBucketRateLimiter {
             }
         });
 
-        // 模拟处理请求 固定速率漏水
+        // 模拟处理请求 固定速率漏水，这个速率即为permitsPerSecond，是间隔stableInterval执行一次任务
         scheduledExecutorService.scheduleAtFixedRate(() -> {
             if (!queue.isEmpty()) {
                 System.out.println(queue.poll() + "被处理");
             }
-        }, 0, 100, TimeUnit.MILLISECONDS);
+        }, 0, rateLimiter.stableInterval, TimeUnit.MILLISECONDS);
 
         // 保证主线程不会退出
         while (true) {

@@ -7,6 +7,17 @@ import java.util.Arrays;
  */
 public class QuickSort1 {
 
+    public static void main(String[] args) {
+        int[] nums = new int[]{10, 1, 5, 3, 2, 7};
+        QuickSort1 quickSort1 = new QuickSort1();
+        int ans = quickSort1.findKthLargest(nums, 2);
+        System.out.println(ans);
+        quickSort1.sort(nums, 0, nums.length - 1);
+        for (int num : nums) {
+            System.out.println(num);
+        }
+    }
+
     public int findKthLargest(int[] nums, int k) {
 
         int pivot = partition(nums, 0, nums.length - 1);
@@ -19,14 +30,24 @@ public class QuickSort1 {
         }
     }
 
+    public void sort(int[] nums, int left, int right) {
+
+        if (left < right) {
+            int pivot = partition(nums, left, right);
+            sort(nums, left, pivot - 1);
+            sort(nums, pivot, right);
+        }
+    }
+
     /**
-     * 寻找nums[right]在数组中正确的位置，升序排列
+     * 寻找nums[right]在数组中正确的位置，降序排列
      */
     public int partition(int[] nums, int left, int right) {
 
         int pivot = nums[right];
         int i = left - 1;
         for (int j = left; j < right; j++) {
+            // 正常情况下，这里是 < 号，代表升序排列
             if (nums[j] > pivot) {
                 i++;
                 swap(nums, i, j);

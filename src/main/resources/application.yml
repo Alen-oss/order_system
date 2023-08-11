@@ -8,3 +8,6 @@ spring:
     database: 0
     port: 6379
     timeout: 3S
+
+zookeeper:
+  address: 127.0.0.1:2181
